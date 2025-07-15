@@ -1,0 +1,8 @@
+AI & ML (HashML)
+********************
+
+.. toctree::
+   :maxdepth: 2
+
+   deploy-hashml-platform
+   use-hashml-platform

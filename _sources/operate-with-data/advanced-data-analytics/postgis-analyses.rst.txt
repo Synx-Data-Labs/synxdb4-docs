@@ -1,0 +1,273 @@
+.. raw:: latex
+
+   \newpage
+
+Use PostGIS for Geospatial Data Analysis
+===========================================
+
+PostGIS is a spatial extension for PostgreSQL, enabling the database to store geographic information system (GIS) objects. |product_name| supports PostGIS, which also includes optional features, such as GiST-based R-tree spatial indexes and functions for analyzing and processing GIS objects. In addition, PostGIS as a |product_name| extension supports the PostGIS Raster data type. PostGIS Raster, together with PostGIS's geometry data types, provides a set of SQL functions (for example, ``ST_Intersects``) that seamlessly integrate vector and raster geospatial data processing. PostGIS Raster uses GDAL (geospatial data abstraction library) as its conversion library for raster geospatial data formats, giving applications a unified raster data model.
+
+For details about |product_name|'s support and limitations for the PostGIS extension, see :ref:`operate-with-data/advanced-data-analytics/postgis-analyses:postgis support and limitations`.
+
+For more information about PostGIS, visit https://postgis.net/.
+
+Create the PostGIS extension
+-------------------------------
+
+The following steps enable the PostGIS extension and other extensions used with PostGIS.
+
+1. To enable PostGIS and PostGIS Raster in a database, run the following command after logging into the database.
+
+   .. code:: sql
+
+      CREATE EXTENSION postgis;
+
+   To enable PostGIS and PostGIS Raster in a specific schema, create the schema first, set the ``search_path`` to the PostGIS schema, and then enable the ``postgis`` extension using the ``WITH SCHEMA`` clause.
+
+   .. code:: sql
+
+      SHOW search_path; -- Views the current search_path
+      CREATE SCHEMA <schema_name>;
+      SET search_path TO <schema_name>;
+      CREATE EXTENSION postgis WITH SCHEMA <schema_name>;
+
+   After enabling the extension, reset the ``search_path``. You can include the PostGIS schema in the ``search_path`` if needed.
+
+2. If necessary, you can enable the PostGIS TIGER geocoder after enabling the ``postgis`` extension.
+
+   To enable the PostGIS TIGER geocoder, you need to enable the ``fuzzystrmatch`` extension before enabling ``postgis_tiger_geocoder``. Use the following commands to enable these extensions.
+
+   .. code:: sql
+
+      CREATE EXTENSION fuzzystrmatch;
+      CREATE EXTENSION postgis_tiger_geocoder;
+
+3. In addition, if needed, you can enable the rule-based address standardizer and add rule tables for the standardizer.
+
+   .. code:: sql
+
+      CREATE EXTENSION address_standardizer;
+      CREATE EXTENSION address_standardizer_data_us;
+
+Enable GDAL raster drivers
+----------------------------
+
+To process raster data in PostGIS, such as using functions like ``ST_AsJPEG()``, GDAL raster drivers are required. By default, all raster drivers are disabled. To enable raster drivers, set the ``POSTGIS_GDAL_ENABLED_DRIVERS`` environment variable in the ``greenplum_path.sh`` file on each host in the |product_name| cluster.
+
+Alternatively, you can set drivers at the session level by modifying the ``postgis.gdal_enabled_drivers`` parameter directly. For example, to enable 3 GDAL raster drivers in a session in |product_name|, use the following ``SET`` command:
+
+.. code:: sql
+
+   SET postgis.gdal_enabled_drivers TO 'GTiff PNG JPEG';
+
+To reset the enabled drivers in the session to the default, use the following ``SET`` command:
+
+.. code:: sql
+
+   SET postgis.gdal_enabled_drivers = default;
+
+To view the list of GDAL raster drivers supported by |product_name|, run the ``raster2pgsql`` tool with the ``-G`` option on the |product_name| coordinator.
+
+.. code:: shell
+
+   raster2pgsql -G
+
+The command lists the driver long format name. The *GDAL Raster Formats* table at http://www.gdal.org/formats_list.html lists the long format names and the corresponding codes that you specify as the value of the environment variable. For example, the code for the long name Portable Network Graphics is ``PNG``. The following example export line enables four GDAL raster drivers.
+
+.. code:: shell
+
+   export POSTGIS_GDAL_ENABLED_DRIVERS="GTiff PNG JPEG GIF"
+
+Use the ``gpstop -r`` command to restart the |product_name| system so that the updated ``greenplum_path.sh`` settings take effect.
+
+After updating the ``greenplum_path.sh`` file on all hosts and restarting the |product_name| system, you can display the enabled raster drivers using the ``ST_GDALDrivers()`` function. The following ``SELECT`` command lists all enabled raster drivers.
+
+.. code:: sql
+
+   SELECT short_name, long_name FROM ST_GDALDrivers();
+
+Enable out-of-database raster feature
+---------------------------------------------
+
+After installing PostGIS, support for out-of-database rasters is disabled by default. This setting is controlled by the ``POSTGIS_ENABLE_OUTDB_RASTERS`` variable in the ``greenplum_path.sh`` file, which is set to ``0`` by default. To enable this feature, change the value to ``true`` (any non-zero value) and make the same update on all hosts. Then, restart the |product_name| system.
+
+You can also enable or disable this feature only for the current |product_name| session. For example, the following ``SET`` command enables the feature for the current session only.
+
+.. code:: sql
+
+   SET postgis.enable_outdb_rasters = true;
+
+.. note:: 
+
+   When out-of-database raster support is enabled, you can specify which raster formats to use with the server configuration parameter ``postgis.gdal_enabled_drivers``.
+
+Remove PostGIS support
+------------------------
+
+To remove the PostGIS extension and its related extensions, use the ``DROP EXTENSION`` command.
+
+Removing PostGIS support from the database does not delete these PostGIS raster environment variables from the ``greenplum_path.sh`` file: ``GDAL_DATA``, ``POSTGIS_ENABLE_OUTDB_RASTERS``, and ``POSTGIS_GDAL_ENABLED_DRIVERS``.
+
+.. note:: 
+
+   Removing PostGIS support from the database will delete all PostGIS data objects without warning. If you are accessing PostGIS objects, the removal process might be interrupted.
+
+Use the ``DROP EXTENSION`` command
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Depending on the extensions you have enabled for PostGIS, you can remove their support from the database.
+
+-  If you have enabled the address standardizer and example rule table, use the following commands to remove these extensions from the current database.
+
+   .. code:: sql
+
+      DROP EXTENSION IF EXISTS address_standardizer_data_us;
+      DROP EXTENSION IF EXISTS address_standardizer;
+
+-  If you have enabled the TIGER geocoder and the ``fuzzystrmatch`` extension, use the following commands to remove these extensions from the current database.
+
+   .. code:: sql
+
+      DROP EXTENSION IF EXISTS postgis_tiger_geocoder;
+      DROP EXTENSION IF EXISTS fuzzystrmatch;
+
+-  To remove support for PostGIS and PostGIS Raster, use the following command to remove the extension from the current database.
+
+   .. code:: sql
+
+      DROP EXTENSION IF EXISTS postgis;
+
+-  If you have enabled PostGIS in a specific schema using the ``CREATE EXTENSION`` command, you might need to update the ``search_path`` and remove the PostGIS schema as needed.
+
+Usage examples
+--------------
+
+Scenario 1: Use PostGIS to create a non-openGIS table, insert and query geometric objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: sql
+
+   -- Creates a table named geom_test.
+   CREATE TABLE geom_test ( gid int4, geom geometry, 
+     name varchar(25) );
+
+   -- Inserts a row with gid 1, a 3D polygon object (a 3D square) in WKT format for the geometry field, and name as '3D Square'.
+   INSERT INTO geom_test ( gid, geom, name )
+     VALUES ( 1, 'POLYGON((0 0 0,0 5 0,5 5 0,5 0 0,0 0 0))', '3D Square');
+     
+   -- Inserts a second row with gid 2, a 3D linestring geometry, and name as '3D Line'.
+   INSERT INTO geom_test ( gid, geom, name ) 
+     VALUES ( 2, 'LINESTRING(1 1 1,5 5 5,7 7 5)', '3D Line' );
+     
+   -- Inserts a third row with gid 3, a 2D multipoint object, and name as '2D Aggregate Point'.
+   INSERT INTO geom_test ( gid, geom, name )
+     VALUES ( 3, 'MULTIPOINT(3 4,8 9)', '2D Aggregate Point' );
+
+   -- Uses ST_GeomFromEWKT to create a 3D linestring object from EWKT,
+   -- then uses Box3D to get the 3D bounding box for this object.
+   -- Uses the && operator to query all rows in the geom_test table
+   -- where the geom field intersects this bounding box.
+   SELECT * from geom_test WHERE geom &&
+     Box3D(ST_GeomFromEWKT('LINESTRING(2 2 0, 3 3 0)'));
+
+Scenario 2: Use PostGIS to create a georeferenced table, insert geocoded point data, and output points in standard text format
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: sql
+
+   -- Creates a table named geotest.
+   CREATE TABLE geotest (id INT4, name VARCHAR(32) );
+
+   -- Adds a column named geopoint to the geotest table, defines it as POINT type,
+   -- sets it to 2D coordinates, and specifies the spatial reference system (SRID) as 4326 (WGS84).
+   SELECT AddGeometryColumn('geotest','geopoint', 4326,'POINT',2);
+
+   -- Inserts a row with id 1, name 'Olympia', and geopoint as a point created with ST_GeometryFromText
+   -- from WKT text, with coordinates (-122.90, 46.97) and SRID 4326.
+   INSERT INTO geotest (id, name, geopoint)
+     VALUES (1, 'Olympia', ST_GeometryFromText('POINT(-122.90 46.97)', 4326));
+     
+   -- Inserts a second row with id 2, name 'Renton',
+   -- with point coordinates (-122.22, 47.50) and SRID 4326.
+   INSERT INTO geotest (id, name, geopoint)
+     VALUES (2, 'Renton', ST_GeometryFromText('POINT(-122.22 47.50)', 4326));
+
+   -- Selects the name and geopoint fields from the geotest table,
+   -- but converts the geopoint field to standard text (WKT) format using ST_AsText.
+   SELECT name, ST_AsText(geopoint) FROM geotest;
+
+Scenario 3: Support spatial indexes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: sql
+
+   -- Creates a table
+   CREATE TABLE spatial_data (
+     id SERIAL PRIMARY KEY,
+     geom geometry
+   );
+
+   -- Inserts data
+   INSERT INTO spatial_data (geom) VALUES 
+   (ST_GeomFromText('POINT(0 0)')),
+   (ST_GeomFromText('POINT(1 1)')),
+   (ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))'));
+
+   -- Creates a spatial index
+   CREATE INDEX spatial_data_gist_idx
+     ON spatial_data
+     USING GIST (geom);
+
+PostGIS support and limitations
+-------------------------------
+
+This section describes the features supported by the |product_name| PostGIS extension and its limitations. In general, the |product_name| PostGIS extension does not support the following features:
+
+-  The PostGIS topology extension (``postgis_topology``)
+-  The PostGIS 3D and geoprocessing extension (``postgis_sfcgal``)
+-  Certain user-defined functions and aggregate operations
+-  Long-duration transactions in PostGIS
+
+Supported PostGIS data types
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The |product_name| PostGIS extension supports the following PostGIS data types:
+
+-  ``box2d``
+-  ``box3d``
+-  ``geometry``
+-  ``geography``
+
+For a complete list of PostGIS data types, operators, and functions, see the `PostGIS Reference Documentation <https://postgis.net/docs/manual-3.3/reference.html>`__\ .
+
+Supported PostGIS indexes
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The |product_name| PostGIS extension supports GiST (generalized search tree) indexes.
+
+Limitations of the PostGIS extension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This section introduces the limitations of the |product_name| PostGIS extension about user-defined functions (UDFs), data types, and aggregations.
+
+-  |product_name| does not support data types and functions related to PostGIS topology features, such as ``TopoGeometry``.
+
+-  |product_name| does not support the following PostGIS aggregates:
+
+   -  ``ST_Collect``
+
+   -  ``ST_MakeLine``
+
+   In a |product_name| cluster with multiple segments, calling the same aggregate function repeatedly might yield different results.
+
+-  |product_name| does not support long-duration transactions in PostGIS.
+
+   PostGIS relies on triggers and the ``public.authorization_table`` in PostGIS tables to support long-duration transactions. When PostGIS tries to lock a long-duration transaction, |product_name| returns an error, indicating that the function cannot access a table named ``authorization_table``.
+
+-  |product_name| does not support the ``_postgis_index_extent`` function.
+
+-  The ``<->`` operator (``geometry <-> geometry``) returns the distance between the centroids of two geometries.
+
+-  |product_name| supports the TIGER geocoder extension but does not support upgrading the TIGER geocoder extension.
+
+-  The ``standardize_address()`` function accepts tables like ``lex``, ``gaz``, or ``rules`` as parameters. If you use tables other than ``us_lex``, ``us_gaz``, or ``us_rules``, set them to a ``DISTRIBUTED REPLICATED`` distribution policy to ensure they work correctly in |product_name|.

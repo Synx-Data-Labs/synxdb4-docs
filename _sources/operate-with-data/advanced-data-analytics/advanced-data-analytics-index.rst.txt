@@ -1,0 +1,12 @@
+Advanced Analytics
+====================
+
+.. toctree:: 
+   :maxdepth: 2
+
+   pgvector-search
+   vectorization-queries
+   postgis-analyses
+   madlib-machine-learning
+   directory-tables
+   roaringbitmap

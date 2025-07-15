@@ -1,0 +1,205 @@
+Deploy HashML Platform
+==========================
+
+HashML Platform is an integrated platform designed for data science and AI development. It provides full lifecycle management from data preparation to production deployment, including data management, model development, training, and deployment. The platform offers a web-based visual interface.
+
+This document explains how to deploy HashML Platform for a |product_name| cluster.
+
+Steps to deploy HashML Platform
+-------------------------------
+
+Preparation
+~~~~~~~~~~~
+
+Before deploying HashML Platform, make sure the following requirements are met:
+
+-  A machine running CentOS 7 with at least 16 GB of available memory.
+-  A |product_name| database cluster has been successfully deployed and is accessible.
+-  The database is configured to allow access from HashML Platform nodes in the ``pg_hba.conf`` file.
+-  Contact SynxDB technical support to obtain the following RPM installation packages:
+
+   - ``hashml-runtime`` (runtime dependencies)
+   - ``hashml-platform`` (platform services)
+
+Step 1: Install the RPM packages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Install the RPM packages. Replace ``<version>`` with the actual file name, for example: ``hashml-platform-0.1.2-1.noarch.rpm``.
+
+   .. code-block:: shell
+
+      # Installs the runtime component.
+      sudo yum install -y hashml-runtime-<version>.x86_64.rpm
+
+      # Installs the platform component.
+      sudo yum install -y hashml-platform-<version>.noarch.rpm
+
+2. Initialize the environment. Switch to the ``hashml`` user and activate the ``hashml`` Python environment:
+
+   .. code-block:: shell
+
+      su - hashml
+      source /usr/local/hashml/bin/activate  # Enter the hashml user environment
+
+3. Verify the installation. If the installation is successful, the following command returns a result.
+
+   .. code-block:: shell
+
+      rpm -qa | grep hashml-platform
+
+Step 2: Configure HashML Platform
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Modify the HashML Platform configuration file. Edit the ``/etc/hashml/platform.toml`` file. For example:
+
+   .. code-block:: toml
+
+      [database]  # Database connection settings
+      name = "hashml"  # Database name
+      user = "gpadmin"  # Database user
+      password = "gpadmin"  # Database password
+      host = "localhost"  # Database host
+      port = 5432  # Database port
+      schema = "hashml"  # Database schema
+
+      [service]  # HashML Platform service settings
+      allowed_hosts = ["*"]
+      ray_service_url = "http://localhost:8000"  # Ray service URL
+      service_host = "0.0.0.0"  # HashML Platform service bind address
+      service_port = 8813  # HashML Platform service port
+      web_workers = 1
+
+      [storage]
+      file_path = "static"
+
+      [system]
+      thread_pool_max_workers = 20
+
+   Make sure the port number in ``ray_service_url`` matches the one configured later in ``services.yml``.
+
+2. Modify the service configuration file. Edit the ``services.yml`` file located at:
+
+   .. code-block:: shell
+
+      /usr/local/hashml/lib/python3.10/site-packages/hashml/platform/core/services.yml
+
+   Update the ``DBCONN_PREFIX`` and ``DBCONN`` fields according to your actual database connection information:
+
+   .. code-block:: yaml
+
+      DBCONN_PREFIX: postgresql://
+      DBCONN: gpadmin:gpadmin@localhost:5432/hashml
+
+3. Set the following environment variables in the ``hashml`` user environment:
+
+   .. code-block:: shell
+
+      # Sets the shared storage directory.
+      export SHARED_STORAGE_PATH=/home/hashml/ray-logs
+
+      # Sets the model directory.
+      export ROOT_MODEL_DIR=/home/hashml/models
+
+      # Sets the data directory.
+      export ROOT_DATA_DIR=/home/hashml/
+
+   For multi-node deployments, you can set the shared storage to an S3-compatible path:
+
+   .. code-block:: shell
+
+      # Set the shared storage directory
+      export SHARED_STORAGE_PATH=s3://ak:sk@bucket/path?endpoint_override=http://ip:port
+
+4. Grant read and write permissions to the static resources directory (run as ``root``):
+
+   .. code-block:: shell
+
+      sudo chmod 777 /usr/local/hashml/lib/python3.10/site-packages/hashml/platform/static
+
+Step 3: Start the HashML Platform service
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Run the following commands in the ``hashml`` user environment.
+
+1. Start the Ray service.
+
+   .. code-block:: shell
+
+      ray start --head
+      ray status  # Checks the status.
+
+2. Start the model backend service.
+
+   .. code-block:: shell
+
+      serve deploy /usr/local/hashml/lib/python3.10/site-packages/hashml/platform/core/services.yml
+      serve status  # Checks the status.
+
+3. Start the API backend service.
+
+   .. code-block:: shell
+
+      systemctl start hashml-platform.service
+
+Step 4: Access the HashML Platform console in your browser
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Open a browser and navigate to ``http://<ip>:<port>/hp`` to access the HashML Platform login page. Here:
+
+-  ``<ip>`` is the IP address of the machine where HashML Platform is running.
+-  ``<port>`` is the service port configured in the ``service_port`` field of the ``/etc/hashml/platform.toml`` file.
+
+The default login username and password are both ``admin``.
+
+Manage HashML Platform services
+----------------------------------
+
+The following are commonly used commands to manage HashML Platform:
+
+-  Check the service status:
+
+   .. code-block:: shell
+
+      systemctl status hashml-platform.service
+
+-  Stop the service:
+
+   .. code-block:: shell
+
+      systemctl stop hashml-platform.service
+
+-  Restart the service (run this after updating the configuration):
+
+   .. code-block:: shell
+
+      systemctl restart hashml-platform.service
+
+-  Enable the service to start on boot:
+
+   .. code-block:: shell
+
+      sudo systemctl enable hashml-platform.service
+
+-  View logs in real time:
+
+   .. code-block:: shell
+
+      sudo journalctl -u hashml-platform.service -f
+
+-  View logs within a specific time range, for example from ``2025-04-22`` to ``2025-04-23``:
+
+   .. code-block:: shell
+
+      sudo journalctl -u hashml-platform.service --since "2025-04-22" --until "2025-04-23"
+
+-  View all logs:
+
+   .. code-block:: shell
+
+      sudo journalctl -u hashml-platform.service -e
+
+Additional notes
+-----------------
+
+-  For assistance with obtaining RPM packages or configuring the platform, contact SynxDB technical support.
+-  It is recommended to record logs during installation and deployment to help with troubleshooting.

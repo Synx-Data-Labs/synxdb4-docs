@@ -1,0 +1,7 @@
+Deploy on Physical Machines
+****************************
+
+.. toctree::
+   :maxdepth: 2
+
+   manual-deploy/manual-deploy-index
